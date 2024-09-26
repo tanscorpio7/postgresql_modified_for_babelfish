@@ -200,9 +200,7 @@ static SubTransactionId myTempNamespaceSubID = InvalidSubTransactionId;
  */
 char	   *namespace_search_path = NULL;
 
-/* Catalog schema that TSQL uses */
-char *SYS_NAMESPACE_NAME = "sys";
-
+bbf_get_sys_nsp_oid_hook_type bbf_get_sys_nsp_oid_hook = NULL;
 relname_lookup_hook_type relname_lookup_hook = NULL;
 match_pltsql_func_call_hook_type match_pltsql_func_call_hook = NULL;
 
@@ -3512,9 +3510,7 @@ GetOverrideSearchPath(MemoryContext context)
 			result->addTemp = true;
 		else
 		{
-			/* sys comes before pg_catalog when sql_dialect is tsql */
-			if (sql_dialect != SQL_DIALECT_TSQL)
-				Assert(linitial_oid(schemas) == PG_CATALOG_NAMESPACE);
+			Assert(linitial_oid(schemas) == PG_CATALOG_NAMESPACE);
 			result->addCatalog = true;
 		}
 		schemas = list_delete_first(schemas);
@@ -3580,15 +3576,6 @@ OverrideSearchPathMatchesCurrent(OverrideSearchPath *path)
 	/* If path->addCatalog, next item should be pg_catalog. */
 	if (path->addCatalog)
 	{
-		/* If tsql dialect, next item should be sys */
-		if (sql_dialect == SQL_DIALECT_TSQL)
-		{
-			if (lc && lfirst_oid(lc) == get_namespace_oid(SYS_NAMESPACE_NAME, true))
-				lc = lnext(activeSearchPath, lc);
-			else
-				return false;
-		}
-
 		if (lc && lfirst_oid(lc) == PG_CATALOG_NAMESPACE)
 			lc = lnext(activeSearchPath, lc);
 		else
@@ -3981,6 +3968,11 @@ recomputeNamespacePath(void)
 		}
 	}
 
+	if (bbf_get_sys_nsp_oid_hook && oidlist != NIL)
+	{
+		list_append_unique_oid(oidlist, (*bbf_get_sys_nsp_oid_hook)());
+	}
+
 	/*
 	 * Remember the first member of the explicit list.  (Note: this is
 	 * nominally wrong if temp_missing, but we need it anyway to distinguish
@@ -3998,17 +3990,6 @@ recomputeNamespacePath(void)
 	 */
 	if (!list_member_oid(oidlist, PG_CATALOG_NAMESPACE))
 		oidlist = lcons_oid(PG_CATALOG_NAMESPACE, oidlist);
-
-	/*
-	 * When sql_dialect is tsql, schema sys is used for catalog instead of
-	 * pg_catalog. So, add it to search_path ahead of pg_catalog.
-	 */
-	if (sql_dialect == SQL_DIALECT_TSQL)
-	{
-		Oid sys_oid = get_namespace_oid(SYS_NAMESPACE_NAME, true);
-		if (!list_member_oid(oidlist, sys_oid))
-			oidlist = lcons_oid(sys_oid, oidlist);
-	}
 
 	if (OidIsValid(myTempNamespace) &&
 		!list_member_oid(oidlist, myTempNamespace))
@@ -4501,7 +4482,7 @@ assign_search_path(const char *newval, void *extra)
 void
 assign_sql_dialect(int newval, void *extra)
 {
-	baseSearchPathValid = false;
+
 }
 
 /*

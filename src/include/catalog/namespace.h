@@ -89,6 +89,8 @@ typedef bool (*match_pltsql_func_call_hook_type) (HeapTuple proctup, int nargs, 
 												  bool *use_defaults, bool *any_special,
 												  bool *variadic, Oid *va_elem_type);
 extern PGDLLEXPORT match_pltsql_func_call_hook_type match_pltsql_func_call_hook;
+typedef Oid (*bbf_get_sys_nsp_oid_hook_type) (void);
+extern PGDLLEXPORT bbf_get_sys_nsp_oid_hook_type bbf_get_sys_nsp_oid_hook;
 
 #define RangeVarGetRelid(relation, lockmode, missing_ok) \
 	RangeVarGetRelidExtended(relation, lockmode, \
